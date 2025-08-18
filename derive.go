@@ -42,14 +42,20 @@ type node struct {
 	key       []byte
 }
 
-// DeriveForPath derives key for a path in BIP-44 format and a seed.
-// Ed25119 derivation operated on hardened keys only.
-func DeriveForPath(path string, seed []byte) (Node, error) {
+// DeriveForPath derives the node at `path` starting from a ROOT seed.
+//
+// Use this when you have the rootSeed(e.g. extracted from the mnemonic) and a derivation path, and you
+// want to deterministically re-create the SAME node every time from the root.
+//
+// Do NOT pass a node's RawSeed() here — that 32-byte value is only the ed25519
+// key seed for that node and does not include its chain code. Feeding it here
+// creates a NEW unrelated root.
+func DeriveForPath(path string, rootSeed []byte) (Node, error) {
 	if !IsValidPath(path) {
 		return nil, ErrInvalidPath
 	}
 
-	key, err := NewMasterNode(seed)
+	key, err := NewMasterNode(rootSeed)
 	if err != nil {
 		return nil, err
 	}
@@ -72,10 +78,16 @@ func DeriveForPath(path string, seed []byte) (Node, error) {
 	return key, nil
 }
 
-// NewMasterNode generates a new master key from seed.
-func NewMasterNode(seed []byte) (Node, error) {
+// NewMasterNode constructs the SLIP-0010 *master node* from a ROOT seed.
+//
+// Use this when you have the original root entropy and want to (re)build a tree
+// deterministically from the top (e.g., together with a path like "m/44'/...").
+// Security: anyone with rootSeed can derive the entire tree. Treat as highly sensitive.
+//
+// rootSeed: arbitrary-length seed per SLIP-0010 (typically 16–64 bytes).
+func NewMasterNode(rootSeed []byte) (Node, error) {
 	hash := hmac.New(sha512.New, []byte(seedModifier))
-	_, err := hash.Write(seed)
+	_, err := hash.Write(rootSeed)
 	if err != nil {
 		return nil, err
 	}
@@ -141,7 +153,9 @@ func (k *node) PublicKeyWithPrefix() []byte {
 	return append([]byte{0x00}, pub...)
 }
 
-// MarshalBinary encodes the node as a 64-byte blob.
+// MarshalBinary serializes the node's extended private key as key||chainCode (64 bytes).
+// Use this to persist a checkpoint so you can restore the node later without the root seed.
+// Security: anyone with this blob can derive all descendants of this node.
 func (k *node) MarshalBinary() ([]byte, error) {
 	// [32]key || [32]chainCode
 	b := make([]byte, 64)
@@ -150,7 +164,8 @@ func (k *node) MarshalBinary() ([]byte, error) {
 	return b, nil
 }
 
-// UnmarshalNode decodes a 64-byte blob into a Node.
+// UnmarshalNode restores a node from a 64-byte key||chainCode blob produced by MarshalBinary.
+// Use this when you saved a node checkpoint and want to continue deriving BELOW that node.
 func UnmarshalNode(b []byte) (Node, error) {
 	if len(b) != 64 {
 		return nil, fmt.Errorf("invalid node blob length: %d", len(b))
