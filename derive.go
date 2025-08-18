@@ -135,7 +135,24 @@ func (k *node) Keypair() (ed25519.PublicKey, ed25519.PrivateKey) {
 	return pub[:], priv[:]
 }
 
-// RawSeed returns raw seed bytes
+// RawSeed returns this node’s 32-byte Ed25519 private key seed (the value you
+// would pass to ed25519.NewKeyFromSeed). It is *not* the SLIP-0010 master seed
+// and it does *not* include the 32-byte chain code.
+//
+// Use when:
+//   - You need the Ed25519 signing key for this node:
+//     priv := ed25519.NewKeyFromSeed(n.RawSeed())
+//   - You must export/import a 32-byte Ed25519 seed for compatibility with
+//     other libraries or formats.
+//
+// Do NOT use when:
+//   - Rehydrating a node for further derivation — RawSeed() alone is insufficient.
+//     To restore a node and derive children, you also need its chain code;
+//     use MarshalBinary/UnmarshalNode instead.
+//   - Creating a new master/root: passing RawSeed() into NewMasterNode/DeriveForPath
+//     produces a *new, unrelated* root and changes the blast radius.
+//
+// Security: RawSeed() recovers the node’s signing key
 func (k *node) RawSeed() []byte {
 	return k.key
 }
