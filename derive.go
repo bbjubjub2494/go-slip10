@@ -34,6 +34,7 @@ type Node interface {
 	PrivateKey() []byte
 	PublicKeyWithPrefix() []byte
 	RawSeed() []byte
+	MarshalBinary() ([]byte, error)
 }
 
 type node struct {
@@ -138,6 +139,27 @@ func (k *node) PrivateKey() []byte {
 func (k *node) PublicKeyWithPrefix() []byte {
 	pub, _ := k.Keypair()
 	return append([]byte{0x00}, pub...)
+}
+
+// MarshalBinary encodes the node as a 64-byte blob.
+func (k *node) MarshalBinary() ([]byte, error) {
+	// [32]key || [32]chainCode
+	b := make([]byte, 64)
+	copy(b[:32], k.key)
+	copy(b[32:], k.chainCode)
+	return b, nil
+}
+
+// UnmarshalNode decodes a 64-byte blob into a Node.
+func UnmarshalNode(b []byte) (Node, error) {
+	if len(b) != 64 {
+		return nil, fmt.Errorf("invalid node blob length: %d", len(b))
+	}
+	n := &node{
+		key:       append([]byte(nil), b[:32]...),
+		chainCode: append([]byte(nil), b[32:]...),
+	}
+	return n, nil
 }
 
 // IsValidPath check whether or not the path has valid segments.
