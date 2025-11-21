@@ -276,3 +276,85 @@ func TestNewMasterNode(t *testing.T) {
 		})
 	}
 }
+
+func TestMarshalUnmarshalNode(t *testing.T) {
+	seed := hexMustDecode("000102030405060708090a0b0c0d0e0f")
+	
+	tests := []struct {
+		name    string
+		path    string
+		seed    []byte
+		wantErr bool
+	}{
+		{
+			name: "master node",
+			path: "m",
+			seed: seed,
+		},
+		{
+			name: "derived node m/0'",
+			path: "m/0'",
+			seed: seed,
+		},
+		{
+			name: "derived node m/0'/1'/2'",
+			path: "m/0'/1'/2'",
+			seed: seed,
+		},
+	}
+	
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Create original node
+			originalNode, err := DeriveForPath(tt.path, tt.seed)
+			if err != nil {
+				t.Fatalf("DeriveForPath() error = %v", err)
+			}
+			
+			// Marshal the node
+			data, err := originalNode.MarshalBinary()
+			if err != nil {
+				t.Fatalf("MarshalBinary() error = %v", err)
+			}
+			
+			// Verify the data is 64 bytes
+			if len(data) != 64 {
+				t.Errorf("MarshalBinary() returned %d bytes, want 64", len(data))
+			}
+			
+			// Unmarshal the node
+			unmarshaledNode, err := UnmarshalNode(data)
+			if err != nil {
+				t.Fatalf("UnmarshalNode() error = %v", err)
+			}
+			
+			// Compare the keys and public keys
+			origPriv := originalNode.PrivateKey()
+			unmarshaledPriv := unmarshaledNode.PrivateKey()
+			if !bytes.Equal(origPriv, unmarshaledPriv) {
+				t.Errorf("PrivateKey mismatch: original = %X, unmarshaled = %X", origPriv, unmarshaledPriv)
+			}
+			
+			origPub := originalNode.PublicKeyWithPrefix()
+			unmarshaledPub := unmarshaledNode.PublicKeyWithPrefix()
+			if !bytes.Equal(origPub, unmarshaledPub) {
+				t.Errorf("PublicKeyWithPrefix mismatch: original = %X, unmarshaled = %X", origPub, unmarshaledPub)
+			}
+			
+			origRawSeed := originalNode.RawSeed()
+			unmarshaledRawSeed := unmarshaledNode.RawSeed()
+			if !bytes.Equal(origRawSeed, unmarshaledRawSeed) {
+				t.Errorf("RawSeed mismatch: original = %X, unmarshaled = %X", origRawSeed, unmarshaledRawSeed)
+			}
+		})
+	}
+	
+	// Test invalid data length
+	t.Run("invalid data length", func(t *testing.T) {
+		invalidData := make([]byte, 63) // Wrong size
+		_, err := UnmarshalNode(invalidData)
+		if err == nil {
+			t.Error("UnmarshalNode() should have returned an error for invalid data length")
+		}
+	})
+}
